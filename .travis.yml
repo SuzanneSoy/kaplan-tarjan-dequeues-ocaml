@@ -1,0 +1,10 @@
+language: c
+
+addons:
+  apt:
+    packages:
+      - ocaml-interp
+
+script:
+  - make print-tool-versions
+  - make
