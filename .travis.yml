@@ -1,9 +1,12 @@
+sudo: false
 language: c
 
 addons:
   apt:
     packages:
-      - ocaml-interp
+      - ocaml
+      - ocaml-findlib
+      - libpodofo-utils
 
 script:
   - make print-tool-versions
