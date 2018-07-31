@@ -1,13 +1,16 @@
 .SECONDEXPANSION:
 
 .PHONY: all
-all: deques deques.mli Makefile
+all: deques deques.mli doc Makefile
 
-deques: deques.ml Makefile
+deques: deques.ml deques.cmi Makefile
 	ocamlc $< -o $@
 
 deques.mli: deques.ml Makefile
 	ocamlc -i $< > $@
+
+deques.cmi: deques.mli Makefile
+	ocamlc $< -o $@
 
 .PHONY: print-tool-versions
 print-tool-versions: Makefile
@@ -32,6 +35,12 @@ jacm-final-crop-%.pdf: $$(shell echo '%.pdf' | sed -e 's/^[-0-9]*-page/jacm-fina
 	          $$(( ($$4) * 100 )); \
         }; \
         f $$(echo '$*' | sed -e 's/page[0-9]*$$//' -e 's/-/ /g')
+
+doc: deques.ml Makefile
+	git clean -dfx doc
+	mkdir doc
+	ocamlfind ocamldoc -html -all-params -colorize-code -charset utf-8 $< -d $@
+	touch doc
 
 .PHONY: clean
 clean: Makefile
