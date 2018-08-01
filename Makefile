@@ -17,7 +17,7 @@ print-tool-versions: Makefile
 	ocamlc -version
 
 jacm-final.pdf: Makefile
-	wget http://www.math.tau.ac.il/~haimk/adv-ds-2000/jacm-final.pdf
+	wget http://www.math.tau.ac.il/~haimk/adv-ds-2000/jacm-final.pdf -O$@ && touch $@
 
 #sudo apt-get install libpodofo-utils to get podofobox
 jacm-final-page%.pdf: jacm-final.pdf Makefile
