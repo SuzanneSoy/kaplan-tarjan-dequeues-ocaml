@@ -66,6 +66,12 @@ module Deques = struct
 end
 open Deques
 
+(* If we naively translate Kaplan and Tarjan's constraints into a set of
+   polymorphic variants, we might end up with some variation of the following,
+   which describes the type of a (semi-)regular stack of deques, where the
+   stack's pointers are one of the fields of its elements. This first attempt
+   only implements a single stack of deques, not a stack of substacks (where
+   the elements of the stack are linked by one of two pointers). *)
 module DequesColors = struct
   type ('prefix, 'child, 'suffix) deque = {
     prefix: 'prefix;
@@ -123,8 +129,70 @@ module DequesColors = struct
 end
 open DequesColors
 
+(* As we can see, the above translation defines the semiregular and regular
+   types as a variant of variants, with 10 cases in total in the
+   definition. Substacks will introduce a number of corner cases, and the
+   above definition could become a long list of those. *)
+(* Instead, we choose to separate the concerns related to pairs of buffers,
+   substacks and stacks. Each level of the construction has its own corner
+   cases, which will be to some extent kept separate. We first start by
+   updating the definition of deques so that the stack becomes a separate,
+   apparent structure. *)
+module DequesColorsStack = struct
+  type ('prefix, 'suffix) deque = {
+    prefix: 'prefix;
+    suffix: 'suffix;
+  }
+  (** jacm-final.pdf p.9 (585) §4.1 media 60 230 368 48 *)
+  type ('color, 'geColor) min = [
+      `LeftMin   of ('color,   'geColor) deque
+    | `RightMin  of ('geColor,   'color) deque
+  ] 
+  type ('color, 'geColor) lastMin = [
+      ('color, 'geColor) min
+    | `LeftOnly  of ('color,      empty) deque
+    | `RightOnly of ( empty,     'color) deque
+  ] 
 
+  (* TODO: use a functor to fill in the <min> part which should be min or lastMin *)
+  (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
+  type 'a greenDeque  = ('a green,  'a geGreen)  min
+  type 'a yellowDeque = ('a yellow, 'a geYellow) min
+  type 'a redDeque    = ('a red,    'a geRed)    min
 
+  type 'a tailSubStack    = [`Cons of 'a   yellowDeque * 'a tailSubStack]
+  type ('hd, 'a) subStack = [`Cons of 'hd              * 'a tailSubStack]
+  type 'a greenSubStack   = ('a  greenDeque, 'a) subStack
+  (* A yellow substack can only appear as the topmost substack in a stack. *)
+  type 'a yellowSubStack  = ('a yellowDeque, 'a) subStack
+  type 'a redSubStack     = ('a    redDeque, 'a) subStack
+
+  (* Contrarily to substacks, the tail of a stack may start with different
+     colors: green is allways possible, but some stack elements may be
+     followed by a red stack element. We therefore need to introduce
+     polymorphic constructors in order to make a union of the two cases. In
+     practice, these cases are already disjoint types, but performing their
+     union is more readily done by defining a variant at this level. *)
+  module ToFixup = struct
+    type 'a gStackTail    = [`GreenStack of 'a greenStack                            | `Null]
+    and  'a gRStackTail   = [`GreenStack of 'a greenStack | `RedStack of 'a redStack | `Null]
+    and  'a greenStack    = 'a greenSubStack  * 'a gRStackTail
+    and  'a yellowGStack  = 'a yellowSubStack * 'a gStackTail
+    and  'a yellowGRStack = 'a yellowSubStack * 'a gRStackTail
+    and  'a redStack      = 'a redSubStack    * 'a gStackTail
+  end
+  open ToFixup
+  type nonrec 'a greenStack    = [`GreenStack  of 'a    greenStack]
+  type nonrec 'a yellowGStack  = [`YellowStack of 'a  yellowGStack]
+  type nonrec 'a yellowGRStack = [`YellowStack of 'a yellowGRStack]
+  type nonrec 'a redStack      = [`RedStack    of 'a      redStack]
+
+  (** * jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
+  type 'a semiregular = ['a greenStack | 'a yellowGRStack | 'a redStack]
+  (** * jacm-final.pdf p.9 (585) §4.1 media 60 338 368 24 *)
+  type 'a regular     = ['a greenStack | 'a yellowGStack  | 'a redStack]
+end
+open DequesColorsStack
 
 
 
