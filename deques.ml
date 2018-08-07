@@ -194,6 +194,52 @@ module DequesColorsStack = struct
 end
 open DequesColorsStack
 
+module TypeLevelFunctions1 = struct
+  (* TODO: bundle together the stack and an on-demand infinite stack of free variables *)
+  (* This should not be exported in the sig. *)
+  module Private = struct
+    (* stack of type-level operands *)
+    type start = ()
+    type ('head, 'tail) stk    = Stk of 'head * 'tail (* constraint 'tail = ('a,'b) stk *)
+
+    (* internal: quote a type and place it on the stack *)
+    type 't _typ = Typ of 't
+  end
+  open Private
+
+  (* unwrap the single element on the stack *)
+  type 'stk return = 'returned constraint 'stk = (start, 'returned _typ) stk
+
+  (* quote a type and place it on the stack *)
+  type ('stk, 't) typ  = ('stk, 't _typ) stk
+
+  (* type-level booleans *)
+  type ('stk, 'freevar) tru  = ('stk, ('a * 'b * 'b)) stk constraint 'freevar = 'a * 'b
+  type ('stk, 'freevar) fals = ('stk, ('a * 'b * 'b)) stk constraint 'freevar = 'a * 'b
+
+  (* type-level conditional *)
+  type 'stk tif = ('tail, 'tresult) stk
+  constraint 'tcondition = 'tthen * 'telse * 'tresult
+  constraint 'stk = ((('tail, 'tcondition) stk, 'tthen) stk, 'telse) stk
+
+  (* type-level duplication of a boolean
+
+     We prefer not to allow duplication of a quoted type, as there would be no
+     way to avoid using the same polymorphic variables in both occurrences. *)
+  (* TODO: use if to duplicate! *)
+  type 'stk dup = ('stk, 'head) stk constraint 'stk = ('tail, 'head) stk
+
+  (* type 'x push = 'a * 'b constraint 'x = 'a * 'b *)
+  (* type ('tcondition, 'tthen, 'telse) tif = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *)
+  
+  type s = ((((start, 't) tru, string) typ), int) typ tif return
+end
+
+
+
+
+
+
 
 
 
