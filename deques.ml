@@ -242,7 +242,165 @@ end
 
 
 
+(* Unification in the HM type system, along with OCaml's constraint keyword,
+   allows us to describe relations between types. The type-level functions
+   below are using this in a way that is reminiscent of Prolog's
+   predicates. We try to put the results on the left-hand side of the equals
+   sign, even though a use of the constraint keyword establishes an unordered
+   relation between two types. This explains why it is possible to write
+   constraint 'x = ('hd, 'tl) push to indicate that 'x is the result, and the
+   equivalent constraint ('hd, 'tl) push = 'x to indicate that 'hd and 'tl are
+   expected to be extracted from a known 'x. *)
+module TypeLevelFunctions = struct
+  (* TODO: bundle together the stack and an on-demand infinite stack of free variables *)
+  (* This should not be exported in the sig. *)
+  module Private = struct
+    (* stack of type-level operands *)
+    type ('hd, 'tl) stack = Stack of 'hd * 'tl
+    type ('stack, 'freevars) state = State of 'stack * 'freevars (* constraint 'tail = ('a,'b) state *)
 
+    type _start = ()
+    type 'freevars start = (_start, 'freevars) state
+    (* internal: quote a type and place it on the stack *)
+    type 't _typ = Typ of 't
+  end
+  open Private
+
+  (* unwrap the single element on the stack *)
+  type close_freevars = ()
+  type 'state return = 'returned constraint 'state = ((_start, 'returned _typ) stack, close_freevars) state
+
+  (* quote a type and place it on the stack *)
+  type ('state, 't) typ  = (('stack, 't _typ) stack, 'freevars) state constraint ('stack, 'freevars) state = 'state
+
+  (* type-level booleans *)
+  type 'state tru  = (('stack, ('a * 'b * 'a)) stack, 'new_freevars) state
+  constraint ('stack, 'freevars) state = 'state
+  constraint 'freevars = 'new_freevars * 'freevar
+  constraint 'freevar = 'a * 'b
+  type 'state fals = (('stack, ('a * 'b * 'b)) stack, 'new_freevars) state
+  constraint ('stack, 'freevars) state = 'state
+  constraint 'freevars = 'new_freevars * 'freevar
+  constraint 'freevar = 'a * 'b
+
+  (* type-level conditional *)
+  type 'state tif = (('tail, 'tresult) stack, 'freevars) state
+  constraint 'tcondition = 'tthen * 'telse * 'tresult
+  constraint 'state = (((('tail, 'tcondition) stack, 'tthen) stack, 'telse) stack, 'freevars) state
+
+  (* type-level duplication of a boolean
+
+     We prefer not to allow duplication of a quoted type, as there would be no
+     way to avoid using the same polymorphic variables in both occurrences. *)
+  (* TODO: use if to duplicate! *)
+  (* type 'state dup = ('state, 'head) state constraint 'state = ('tail, 'head) state *)
+
+  (* type 'x push = 'a * 'b constraint 'x = 'a * 'b *)
+  (* type ('tcondition, 'tthen, 'telse) tif = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *)
+
+  type 'state typ_string = ('state, string) typ
+  type 'state typ_int    = ('state,    int) typ
+  
+  type 'arg s = 'result
+  constraint 'state = 'freevars start
+  constraint 'result = 'bool typ_string typ_int tif return
+  constraint 'bool * 'state = 'arg
+
+  type 'state tt = ('state tru  * 'state)
+  type 'state ff = ('state fals * 'state)
+  type s1 = 'state tt s
+  type s2 = 'state ff s
+  type z = ('freevars start, string) typ return
+
+
+
+  type 'state xs = 'state typ_string typ_int tif return
+  type xs1 = 't tru xs
+  type xs2 = 't fals xs
+end
+
+
+
+
+
+
+
+
+
+
+
+(* The code below gives the error:
+
+   In this definition, a type variable cannot be deduced from the type
+   parameters. *)
+(* module TypeLevelFunctions = struct
+ *   (\* This should not be exported in the sig. *\)
+ *   module Private = struct
+ *     (\* stack of type-level operands *\)
+ *     type ('head, 'tail)     __stk = 'head * 'tail
+ *     (\* TODO: use a low-level boolean to make an "or" constraint on the tail: "State" OR "start" and fuse with line above *\)
+ *     type ('head, 'tail)      _stk = ('head, 'tail) __stk      (\* constraint 'tail = ('a,'b) __stk *\)
+ *     type ('stk, 'freevars) _state = [`State of 'stk * 'freevars] (\* constraint 'stk = ('head, 'tail) _stk *\)
+ * 
+ *     type 'freevars start = (unit * (unit * unit), 'freevars) _state
+ * 
+ *     (\* type ('state, 'elt)      push = (('elt, 'stk) _stk, 'freevars) _state
+ *      * constraint ('stk, 'freevars) _state = 'state *\)
+ *     type ('state, 'elt)      push = [`State of ('elt * 'stk) * 'freevars]
+ *     constraint [`State of 'stk * 'freevars] = 'state
+ * 
+ *     type ('state, 'fresh_freevar) freevar = ('stk, 'next_freevars) _state
+ *     constraint ('stk, 'freevars) _state = 'state
+ *     (\* The following line connects two polymorphic type variables (as the
+ *        element types of a 2-tuple) to what was previously a single spot in the
+ *        type. This has the effect of conceptually splitting that chunk of
+ *        unknown into a fresh free variable (which may get unified to anything),
+ *        and a new chunk of unknown. *\)
+ *     constraint ('fresh_freevar * 'next_freevars) = 'freevars
+ * 
+ *     (\* internal: quote a type and place it on the stack *\)
+ *     type 't _typ = Typ of 't
+ *   end
+ *   open Private
+ * 
+ *   (\* unwrap the single element on the stack *\)
+ *   type 'state return = 'returned constraint 'state = ('freevars start, 'returned _typ) push
+ * 
+ *   (\* quote a type and place it on the stack *\)
+ *   type ('state, 't) typ  = ('state, 't _typ) push
+ * 
+ *   (\* type-level booleans *\)
+ *   type ('state, 'freevar) tru  = ('state, ('a * 'b * 'b)) push constraint 'freevar = 'a * 'b
+ *   type ('state, 'freevar) fals = ('state, ('a * 'b * 'b)) push constraint 'freevar = 'a * 'b
+ * 
+ *   (\* type-level conditional *\)
+ *   type 'arg psh = [`State of ('tcondition * 'stk) * 'freevars]
+ *   constraint [`State of 'stk * 'freevars] = 'tail
+ *   constraint 'tail * 'tcondition * 'stk * 'freevars = 'arg
+ *   
+ *   type 'state tif = ('tail * 'tresult * int * string) psh
+ *   (\* constraint ('tail, 'tcondition) push = 'state *\)
+ *     (\* type ('state, 'elt)      push = [`State of ('elt * 'stk) * 'freevars] *\)
+ *   constraint 'state = ('tail * 'tcondition * int * string) psh
+ *   constraint 'tcondition = 'tresult * int
+ *   (\* constraint 'tthen * 'telse * 'tresult = 'tcondition
+ *    * constraint ((('tail, 'tcondition) push, 'tthen) push, 'telse) push = 'state *\)
+ * 
+ *   (\* type-level duplication of a boolean
+ * 
+ *      We prefer not to allow duplication of a quoted type, as there would be no
+ *      way to avoid using the same polymorphic variables in both occurrences. *\)
+ *   (\* TODO: use if to duplicate! *\)
+ *   (\* TODO: use if to duplicate! *\)
+ *   (\* TODO: use if to duplicate! *\)
+ *   (\* TODO: use if to duplicate! *\)
+ *   type 'state dup = ('state, 'head) push constraint 'state = ('tail, 'head) push
+ * 
+ *   (\* type 'x push = 'a * 'b constraint 'x = 'a * 'b *\)
+ *   (\* type ('tcondition, 'tthen, 'telse) tif = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *\)
+ *   
+ *   (\* type s = ((((start, 't) tru, string) typ), int) typ tif return *\)
+ * end *)
 
 
 
