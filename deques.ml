@@ -218,7 +218,7 @@ module TypeLevelFunctions1 = struct
   type ('stk, 'freevar) fals = ('stk, ('a * 'b * 'b)) stk constraint 'freevar = 'a * 'b
 
   (* type-level conditional *)
-  type 'stk tif = ('tail, 'tresult) stk
+  type 'stk ifelse = ('tail, 'tresult) stk
   constraint 'tcondition = 'tthen * 'telse * 'tresult
   constraint 'stk = ((('tail, 'tcondition) stk, 'tthen) stk, 'telse) stk
 
@@ -230,9 +230,9 @@ module TypeLevelFunctions1 = struct
   type 'stk dup = ('stk, 'head) stk constraint 'stk = ('tail, 'head) stk
 
   (* type 'x push = 'a * 'b constraint 'x = 'a * 'b *)
-  (* type ('tcondition, 'tthen, 'telse) tif = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *)
+  (* type ('tcondition, 'tthen, 'telse) ifelse = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *)
   
-  type s = ((((start, 't) tru, string) typ), int) typ tif return
+  type s = ((((start, 't) tru, string) typ), int) typ ifelse return
 end
 
 
@@ -251,74 +251,106 @@ end
    constraint 'x = ('hd, 'tl) push to indicate that 'x is the result, and the
    equivalent constraint ('hd, 'tl) push = 'x to indicate that 'hd and 'tl are
    expected to be extracted from a known 'x. *)
-module TypeLevelFunctions = struct
+module T = struct
   (* TODO: bundle together the stack and an on-demand infinite stack of free variables *)
   (* This should not be exported in the sig. *)
   module Private = struct
     (* stack of type-level operands *)
     type ('hd, 'tl) stack = Stack of 'hd * 'tl
-    type ('stack, 'freevars) state = State of 'stack * 'freevars (* constraint 'tail = ('a,'b) state *)
+    type ('stack, 'freevars) _state = State of 'stack * 'freevars (* constraint 'tail = ('a,'b) state *)
 
-    type _start = ()
-    type 'freevars start = (_start, 'freevars) state
+    type __start = ()
+    type 'freevars _start = (__start, 'freevars) _state
     (* internal: quote a type and place it on the stack *)
-    type 't _typ = Typ of 't
+    type 't     _typ = Typ of 't
+    type 't _polytyp = PolyTyp of 't
+
+    (* push a new type-level value onto the stack *)
+    type ('state, 'v) _push = (('stack, 'v) stack, 'freevars) _state
+    constraint ('stack, 'freevars) _state = 'state
+
+    (* fetch the value on top of the the stack *)
+    type 'state _peek = 'v
+    constraint (('stack, 'v) stack, 'freevars) _state = 'state
+
+    (* drop the value on top of the the stack *)
+    type 'state _drop = ('tail, 'freevars) _state
+    constraint (('tail, 'v) stack, 'freevars) _state = 'state
   end
   open Private
 
-  (* unwrap the single element on the stack *)
-  type close_freevars = ()
-  type 'state return = 'returned constraint 'state = ((_start, 'returned _typ) stack, close_freevars) state
+  (* Instantiate a new free variable. *)
+  type ('state, 'freevar) freevar = ('stack, 'new_freevars) _state
+  constraint ('stack, 'freevars) _state = 'state
+  constraint 'new_freevars * 'freevar = 'freevars
 
-  (* quote a type and place it on the stack *)
-  type ('state, 't) typ  = (('stack, 't _typ) stack, 'freevars) state constraint ('stack, 'freevars) state = 'state
+  (* Unwrap the single element on the stack. *)
+  type close_freevars = ()
+  type 'state return = 'returned constraint 'state = ((__start, 'returned _typ) stack, close_freevars) _state
+
+  (* Quote a type and place it on the stack. *)
+  type ('state, 't) typ  = (('stack, 't _typ)  stack, 'freevars) _state constraint ('stack, 'freevars) _state = 'state
+
+  (* Quote a polymorphic type and place it on the stack. *)
+  (* 'x should be a free variable on the caller's site,
+     'xt should be 'x t where t is the polymorphic type to quote. *)
+  type ('state, 'x, 'xt) polytyp = (('stack, ('xt * 'x) _polytyp) stack, 'freevars) _state
+  constraint ('stack, 'freevars) _state = ('state, 'x) freevar
 
   (* type-level booleans *)
-  type 'state tru  = (('stack, ('a * 'b * 'a)) stack, 'new_freevars) state
-  constraint ('stack, 'freevars) state = 'state
-  constraint 'freevars = 'new_freevars * 'freevar
-  constraint 'freevar = 'a * 'b
-  type 'state fals = (('stack, ('a * 'b * 'b)) stack, 'new_freevars) state
-  constraint ('stack, 'freevars) state = 'state
-  constraint 'freevars = 'new_freevars * 'freevar
-  constraint 'freevar = 'a * 'b
+  type 'state tru  = ('state2, ('a * 'b * 'a)) _push
+  constraint 'state2 = ('state, 'a * 'b) freevar
+  type 'state fals = ('state2, ('a * 'b * 'b)) _push
+  constraint 'state2 = ('state, 'a * 'b) freevar
+
+  type ('x, 'y) _cons = Cons of 'x * 'y
+  type 'state cons = ('state _drop _drop, ('state _peek, 'state _drop _peek) _cons) _push
+  type 'state uncons = (('state _drop, 'x) _push, 'y) _push
+  constraint ('x, 'y) _cons = 'state _peek
 
   (* type-level conditional *)
-  type 'state tif = (('tail, 'tresult) stack, 'freevars) state
+  type 'state ifelse = (('tail, 'tresult) stack, 'freevars) _state
   constraint 'tcondition = 'tthen * 'telse * 'tresult
-  constraint 'state = (((('tail, 'tcondition) stack, 'tthen) stack, 'telse) stack, 'freevars) state
+  constraint 'state = (((('tail, 'tcondition) stack, 'tthen) stack, 'telse) stack, 'freevars) _state
 
   (* type-level duplication of a boolean
 
      We prefer not to allow duplication of a quoted type, as there would be no
      way to avoid using the same polymorphic variables in both occurrences. *)
-  (* TODO: use if to duplicate! *)
-  (* type 'state dup = ('state, 'head) state constraint 'state = ('tail, 'head) state *)
+  (* type 'state dup = 'state tru tru cons fals fals cons ifelse uncons *)
+  type 'state dup = 'state tru
+  type 'state exch = (('state _drop _drop, 'state _peek) _push, 'state _drop _peek) _push
+  type 'state pop = 'state _drop
+
+  (* apply a single-argument polymorphic type to an argument *)
+  type 'state polyapp = 'result
+  (* left-hand-side of product type is output, right-hand-side is input *)
+  constraint ('result * ('state _drop)) _polytyp = 'state _peek
 
   (* type 'x push = 'a * 'b constraint 'x = 'a * 'b *)
-  (* type ('tcondition, 'tthen, 'telse) tif = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *)
+  (* type ('tcondition, 'tthen, 'telse) ifelse = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *)
 
   type 'state typ_string = ('state, string) typ
   type 'state typ_int    = ('state,    int) typ
-  
-  type 'arg s = 'result
-  constraint 'state = 'freevars start
-  constraint 'result = 'bool typ_string typ_int tif return
-  constraint 'bool * 'state = 'arg
-
-  type 'state tt = ('state tru  * 'state)
-  type 'state ff = ('state fals * 'state)
-  type s1 = 'state tt s
-  type s2 = 'state ff s
-  type z = ('freevars start, string) typ return
-
-
-
-  type 'state xs = 'state typ_string typ_int tif return
-  type xs1 = 't tru xs
-  type xs2 = 't fals xs
+  type 'state typ_unit   = ('state, unit)   typ
 end
 
+module TypeLevelFunctionsExamples = struct
+  open T
+  
+  type 'state s = 'state typ_string typ_int ifelse return
+  type s1 = 't tru s            (* push true  on the stack, call s => string *)
+  type s2 = 't fals s           (* push false on the stack, call s => int *)
+
+  type 'state f = 'state tru typ_string
+  type 'state t = 'state polyapp typ_int ifelse return
+  type 'state push_f = ('state, 'x, 'x f) polytyp
+  type t1 = 't push_f t
+
+  type 'state u = 'state tru dup typ_int typ_string ifelse typ_unit ifelse return
+  type u1 = 't u
+  (* type u2 = 't fals u *)
+end
 
 
 
@@ -378,7 +410,7 @@ end
  *   constraint [`State of 'stk * 'freevars] = 'tail
  *   constraint 'tail * 'tcondition * 'stk * 'freevars = 'arg
  *   
- *   type 'state tif = ('tail * 'tresult * int * string) psh
+ *   type 'state ifelse = ('tail * 'tresult * int * string) psh
  *   (\* constraint ('tail, 'tcondition) push = 'state *\)
  *     (\* type ('state, 'elt)      push = [`State of ('elt * 'stk) * 'freevars] *\)
  *   constraint 'state = ('tail * 'tcondition * int * string) psh
@@ -397,9 +429,9 @@ end
  *   type 'state dup = ('state, 'head) push constraint 'state = ('tail, 'head) push
  * 
  *   (\* type 'x push = 'a * 'b constraint 'x = 'a * 'b *\)
- *   (\* type ('tcondition, 'tthen, 'telse) tif = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *\)
+ *   (\* type ('tcondition, 'tthen, 'telse) ifelse = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *\)
  *   
- *   (\* type s = ((((start, 't) tru, string) typ), int) typ tif return *\)
+ *   (\* type s = ((((start, 't) tru, string) typ), int) typ ifelse return *\)
  * end *)
 
 
