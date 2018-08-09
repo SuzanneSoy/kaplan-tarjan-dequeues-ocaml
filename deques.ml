@@ -278,7 +278,15 @@ module T = struct
     constraint (('stack, 'v, 'fv) _stack, 'freevars) _state = 'state
 
     (* drop the value on top of the the stack *)
-    type closed_freevar = [`FreeVar of (closed_freevar * closed_freevar)]
+    (* type closed_freevar = [`FreeVar of (closed_freevar * closed_freevar)] *)
+    type closed_freevar1 = [`FreeVar of unit]
+    type closed_freevar2 = [`FreeVar of (closed_freevar1 * closed_freevar1)]
+    type closed_freevar3 = [`FreeVar of (closed_freevar2 * closed_freevar2)]
+    type closed_freevar4 = [`FreeVar of (closed_freevar3 * closed_freevar3)]
+    type closed_freevar5 = [`FreeVar of (closed_freevar4 * closed_freevar4)]
+    type closed_freevar6 = [`FreeVar of (closed_freevar5 * closed_freevar5)]
+    type closed_freevar7 = [`FreeVar of (closed_freevar6 * closed_freevar6)]
+    type closed_freevar  = [`FreeVar of (closed_freevar7 * closed_freevar7)]
     type 'a _fv = [`FreeVar of 'a]
     type ('a,'b) _fvs = [`FreeVar of 'a * 'b]
     type no_freevar = closed_freevar
@@ -326,7 +334,10 @@ module T = struct
   (* type-level conditional *)
   type 'state ifelse = (('tail, 'tresult, 'fvr) _stack, 'freevars) _state
   constraint 'state = (((('tail, 'tcondition, 'fvc) _stack, 'tthen, 'fvt) _stack, 'telse, 'fve) _stack, 'freevars) _state
-  constraint 'tcondition = ('tthen * 'fvt) * ('telse * 'fve) * ('tresult * 'fvr) * ('tdiscard * 'fvd)
+  constraint 'tcondition = ([`whut of 'tthen * 'fvt]) * ([`whut of 'telse * 'fve]) * ([`whut of 'tresult * 'fvr]) * ([`whut of 'tdiscard * 'fvd])
+  (* (\* DEBUG *\)
+   * constraint 'fvr = 'fvt
+   * constraint 'fvd = 'fve *)
   (* Since the discarded value may contain some free variables, we need to
      bind them to some dummy value. *)
   constraint 'fvd = closed_freevar
@@ -358,19 +369,23 @@ module TypeLevelFunctionsExamples = struct
   type 'state s = 'state typ_string typ_int ifelse return
   type s1 = 't tru s            (* push true  on the stack, call s => string *)
   type s2 = 't fals s           (* push false on the stack, call s => int *)
-
+  
   type 'state f = 'state tru typ_string
   type 'state t = 'state polyapp typ_int ifelse return
   type 'state push_f = ('state, 'x, 'x f) polytyp
   type t1 = 't push_f t         (* => string *)
 
-  (* type 'state u = 'state tru dup typ_int typ_string ifelse typ_unit ifelse return *)
+  type 'state u = 'state dup typ_int typ_string ifelse typ_unit exch ifelse return
   (* type 'state u = 'state tru tru tru cons fals fals cons ifelse uncons pop pop typ_int return *)
   (* type 'state u = 'state tru w typ_int typ_string ifelse return *)
-  type 'state w = 'state tru tru cons fals fals cons ifelse uncons
-  type 'state u = 'state tru w pop pop typ_int return
-  type u1 = 't u
-  (* type u2 = 't fals u *)
+
+     
+  (* type 'state w = 'state tru fals cons (\* the problem occurs when the cons is present. *\)
+   *                   fals fals cons ifelse (\* and the second cons and ifelse are present too *\)
+   * type 'state u = 'state tru w pop typ_int return *)
+  
+  type u1 = 't tru u
+  type u2 = 't fals u
 end
 
 
