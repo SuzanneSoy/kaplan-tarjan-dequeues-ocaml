@@ -279,22 +279,27 @@ module T = struct
 
     (* drop the value on top of the the stack *)
     (* type closed_freevar = [`FreeVar of (closed_freevar * closed_freevar)] *)
-    type closed_freevar1 = [`FreeVar of unit]
-    type closed_freevar2 = [`FreeVar of (closed_freevar1 * closed_freevar1)]
-    type closed_freevar3 = [`FreeVar of (closed_freevar2 * closed_freevar2)]
-    type closed_freevar4 = [`FreeVar of (closed_freevar3 * closed_freevar3)]
-    type closed_freevar5 = [`FreeVar of (closed_freevar4 * closed_freevar4)]
-    type closed_freevar6 = [`FreeVar of (closed_freevar5 * closed_freevar5)]
-    type closed_freevar7 = [`FreeVar of (closed_freevar6 * closed_freevar6)]
-    type closed_freevar  = [`FreeVar of (closed_freevar7 * closed_freevar7)]
-    type 'a _fv = [`FreeVar of 'a]
-    type ('a,'b) _fvs = [`FreeVar of 'a * 'b]
-    type no_freevar = closed_freevar
+    type closed_freevar1 = [`FreeVar of unit * unit]
+    (* 'x serves as a handled. If is is not unified with anything, it does not
+       cause any harm. If it is unified with ('u * 'u * 'v * 'v * 'w * 'w), it
+       causes three pairs of types to unify, thereby closing a local type
+       variable and propagating that close order down to the two children. *)
+    type 'dummy close_freevars = ('u * 'u * 'v * 'v * 'w * 'w) constraint ('u * 'v * 'w) = 'dummy
+    type ('a, 'x) _fv = [`FreeVar of 'a * 'x]
+    constraint (  'a   * closed_freevar1
+                * unit * unit (* ignored *)
+                * unit * unit (* ignored *)) = 'x
+    type ('a, 'b, 'x) _fvs = [`FreeVar of ('a * 'b) * 'x]
+    constraint (  unit * unit (* ignored *)
+                * 'a   * [`FreeVar of 'one * 'dummy1 close_freevars]
+                * 'b   * [`FreeVar of 'two * 'dummy2 close_freevars]) = 'x
+    (*TODO: possibly need to bind: 'one 'two 'dummy1 'dummy2 *)
+    type no_freevar = closed_freevar1
     type 'state _pop = ('tail, 'freevars) _state
     constraint (('tail, 'v, 'fv) _stack, 'freevars) _state = 'state
     type 'state _discard = ('tail, 'freevars) _state
     constraint (('tail, 'v, 'fv) _stack, 'freevars) _state = 'state
-    constraint 'fv = closed_freevar
+    constraint 'fv = [`FreeVar of 'fv_ * 'dummy close_freevars]
   end
   open Private
 
@@ -305,7 +310,8 @@ module T = struct
 
   (* Unwrap the single element on the stack. *)
   type 'state return = 'returned
-  constraint 'state = ((__start, 'returned _typ, closed_freevar) _stack, closed_freevar) _state
+  constraint 'state = ((__start, 'returned _typ, 'fvs) _stack, closed_freevar1) _state
+  constraint 'fvs = [`FreeVar of 'fvs_ * 'dummy close_freevars]
 
   (* Quote a type and place it on the stack. *)
   type ('state, 't) typ  = (('stack, 't _typ, no_freevar) _stack, 'freevars) _state
@@ -314,22 +320,26 @@ module T = struct
   (* Quote a polymorphic type and place it on the stack. *)
   (* 'x should be a free variable on the caller's site,
      'xt should be 'x t where t is the polymorphic type to quote. *)
-  type ('state, 'x, 'xt) polytyp = (('stack, ('xt * 'x) _polytyp, 'x _fv) _stack, 'freevars) _state
-  constraint ('stack, 'freevars) _state = ('state, 'x) _freevar
+  type ('state, 'x, 'xt) polytyp = (('stack, ('xt * 'x) _polytyp, ('x, 'fv) _fv) _stack, 'freevars) _state
+  constraint ('stack, 'freevars) _state = ('state, 'x * 'fv) _freevar
 
   (* type-level booleans *)
-  type 'state tru  = ('state2, ('a * 'b * 'a * 'b), ('a _fv, 'b _fv) _fvs) _push
-  constraint 'state2 = ('state, 'a * 'b * [`tru]) _freevar
-  type 'state fals = ('state2, ('a * 'b * 'b * 'a), ('a _fv, 'b _fv) _fvs) _push
-  constraint 'state2 = ('state, 'a * 'b * [`fals]) _freevar
+  type 'state tru  = ('state2, ('a * 'b * 'a * 'b), (('a, 'fva) _fv, ('b, 'fvb) _fv, 'fvab) _fvs) _push
+  constraint 'state2 = ('state, 'a * 'b * 'fva * 'fvb * 'fvab) _freevar
+  type 'state fals = ('state2, ('a * 'b * 'b * 'a), (('a, 'fva) _fv, ('b, 'fvb) _fv, 'fvab) _fvs) _push
+  constraint 'state2 = ('state, 'a * 'b * 'fva * 'fvb * 'fvab) _freevar
 
   type ('x, 'y) _cons = Cons of 'x * 'y
-  type 'state cons = ('state _pop _pop,
-                      ('state _pop _peekv,  'state _peekv)  _cons,
-                      ('state _pop _peekfv, 'state _peekfv) _fvs) _push
+  type 'state cons = ('state2 _pop _pop,
+                      ('state2 _pop _peekv,  'state2 _peekv)  _cons,
+                      ('state2 _pop _peekfv, 'state2 _peekfv, 'fv) _fvs) _push
+  constraint 'state2 = ('state, 'fv) _freevar
   type 'state uncons = (('state _pop, 'x, 'fvx) _push, 'y, 'fvy) _push
-  constraint ('x,     'y) _cons = 'state _peekv
-  constraint ('fvx, 'fvy) _fvs  = 'state _peekfv
+  constraint ('x,            'y) _cons = 'state _peekv
+  constraint ('fvx, 'fvy, 'fvxy) _fvs  = 'state _peekfv
+  constraint 'fvxy = (  unit * unit (* ignored *)
+                        * 'a   * [`FreeVar of 'one * 'dummy1 close_freevars]
+                        * 'b   * [`FreeVar of 'two * 'dummy2 close_freevars])
 
   (* type-level conditional *)
   type 'state ifelse = (('tail, 'tresult, 'fvr) _stack, 'freevars) _state
@@ -340,7 +350,9 @@ module T = struct
                            * ([`v_fv of 'tdiscard * 'fvd])
   (* Since the discarded value may contain some free variables, we need to
      bind them to some dummy value. *)
-  constraint 'fvd = closed_freevar
+  constraint 'fvd = [`FreeVar of 'fvd_ * 'dummy close_freevars]
+  constraint 'fvc = [`FreeVar of 'fvab * 'x]
+  constraint 'x   = unit (* release the 'x of 'fvc, since the condition was used *)
 
   (* type-level duplication of a boolean
 
