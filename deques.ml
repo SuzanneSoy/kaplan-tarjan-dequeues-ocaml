@@ -334,10 +334,10 @@ module T = struct
   (* type-level conditional *)
   type 'state ifelse = (('tail, 'tresult, 'fvr) _stack, 'freevars) _state
   constraint 'state = (((('tail, 'tcondition, 'fvc) _stack, 'tthen, 'fvt) _stack, 'telse, 'fve) _stack, 'freevars) _state
-  constraint 'tcondition = ([`whut of 'tthen * 'fvt]) * ([`whut of 'telse * 'fve]) * ([`whut of 'tresult * 'fvr]) * ([`whut of 'tdiscard * 'fvd])
-  (* (\* DEBUG *\)
-   * constraint 'fvr = 'fvt
-   * constraint 'fvd = 'fve *)
+  constraint 'tcondition =   ([`v_fv of 'tthen    * 'fvt])
+                           * ([`v_fv of 'telse    * 'fve])
+                           * ([`v_fv of 'tresult  * 'fvr])
+                           * ([`v_fv of 'tdiscard * 'fvd])
   (* Since the discarded value may contain some free variables, we need to
      bind them to some dummy value. *)
   constraint 'fvd = closed_freevar
@@ -376,107 +376,10 @@ module TypeLevelFunctionsExamples = struct
   type t1 = 't push_f t         (* => string *)
 
   type 'state u = 'state dup typ_int typ_string ifelse typ_unit exch ifelse return
-  (* type 'state u = 'state tru tru tru cons fals fals cons ifelse uncons pop pop typ_int return *)
-  (* type 'state u = 'state tru w typ_int typ_string ifelse return *)
-
-     
-  (* type 'state w = 'state tru fals cons (\* the problem occurs when the cons is present. *\)
-   *                   fals fals cons ifelse (\* and the second cons and ifelse are present too *\)
-   * type 'state u = 'state tru w pop typ_int return *)
-  
   type u1 = 't tru u
   type u2 = 't fals u
 end
 
-
-
-
-
-
-
-
-
-
-(* The code below gives the error:
-
-   In this definition, a type variable cannot be deduced from the type
-   parameters. *)
-(* module TypeLevelFunctions = struct
- *   (\* This should not be exported in the sig. *\)
- *   module Private = struct
- *     (\* stack of type-level operands *\)
- *     type ('head, 'tail)     __stk = 'head * 'tail
- *     (\* TODO: use a low-level boolean to make an "or" constraint on the tail: "State" OR "start" and fuse with line above *\)
- *     type ('head, 'tail)      _stk = ('head, 'tail) __stk      (\* constraint 'tail = ('a,'b) __stk *\)
- *     type ('stk, 'freevars) _state = [`State of 'stk * 'freevars] (\* constraint 'stk = ('head, 'tail) _stk *\)
- * 
- *     type 'freevars start = (unit * (unit * unit), 'freevars) _state
- * 
- *     (\* type ('state, 'elt)      push = (('elt, 'stk) _stk, 'freevars) _state
- *      * constraint ('stk, 'freevars) _state = 'state *\)
- *     type ('state, 'elt)      push = [`State of ('elt * 'stk) * 'freevars]
- *     constraint [`State of 'stk * 'freevars] = 'state
- * 
- *     type ('state, 'fresh_freevar) freevar = ('stk, 'next_freevars) _state
- *     constraint ('stk, 'freevars) _state = 'state
- *     (\* The following line connects two polymorphic type variables (as the
- *        element types of a 2-tuple) to what was previously a single spot in the
- *        type. This has the effect of conceptually splitting that chunk of
- *        unknown into a fresh free variable (which may get unified to anything),
- *        and a new chunk of unknown. *\)
- *     constraint ('fresh_freevar * 'next_freevars) = 'freevars
- * 
- *     (\* internal: quote a type and place it on the stack *\)
- *     type 't _typ = Typ of 't
- *   end
- *   open Private
- * 
- *   (\* unwrap the single element on the stack *\)
- *   type 'state return = 'returned constraint 'state = ('freevars start, 'returned _typ) push
- * 
- *   (\* quote a type and place it on the stack *\)
- *   type ('state, 't) typ  = ('state, 't _typ) push
- * 
- *   (\* type-level booleans *\)
- *   type ('state, 'freevar) tru  = ('state, ('a * 'b * 'b)) push constraint 'freevar = 'a * 'b
- *   type ('state, 'freevar) fals = ('state, ('a * 'b * 'b)) push constraint 'freevar = 'a * 'b
- * 
- *   (\* type-level conditional *\)
- *   type 'arg psh = [`State of ('tcondition * 'stk) * 'freevars]
- *   constraint [`State of 'stk * 'freevars] = 'tail
- *   constraint 'tail * 'tcondition * 'stk * 'freevars = 'arg
- *   
- *   type 'state ifelse = ('tail * 'tresult * int * string) psh
- *   (\* constraint ('tail, 'tcondition) push = 'state *\)
- *     (\* type ('state, 'elt)      push = [`State of ('elt * 'stk) * 'freevars] *\)
- *   constraint 'state = ('tail * 'tcondition * int * string) psh
- *   constraint 'tcondition = 'tresult * int
- *   (\* constraint 'tthen * 'telse * 'tresult = 'tcondition
- *    * constraint ((('tail, 'tcondition) push, 'tthen) push, 'telse) push = 'state *\)
- * 
- *   (\* type-level duplication of a boolean
- * 
- *      We prefer not to allow duplication of a quoted type, as there would be no
- *      way to avoid using the same polymorphic variables in both occurrences. *\)
- *   (\* TODO: use if to duplicate! *\)
- *   (\* TODO: use if to duplicate! *\)
- *   (\* TODO: use if to duplicate! *\)
- *   (\* TODO: use if to duplicate! *\)
- *   type 'state dup = ('state, 'head) push constraint 'state = ('tail, 'head) push
- * 
- *   (\* type 'x push = 'a * 'b constraint 'x = 'a * 'b *\)
- *   (\* type ('tcondition, 'tthen, 'telse) ifelse = 'tresult constraint 'tcondition = 'tthen * 'telse * 'tresult *\)
- *   
- *   (\* type s = ((((start, 't) tru, string) typ), int) typ ifelse return *\)
- * end *)
-
-
-
-
-
-
-
-   
 (** jacm-final.pdf p.8 (584) §4.1 media 60 480 368 36 *)
 (* let rec child i d =
      if i = 0 then d
