@@ -139,33 +139,52 @@ open DequesColors
    updating the definition of deques so that the stack becomes a separate,
    apparent structure. *)
 module DequesColorsStack = struct
-  type ('prefix, 'suffix) deque = {
-    prefix: 'prefix;
-    suffix: 'suffix;
-  }
+  type ('prefix, 'substack, 'suffix) deque = {
+      prefix:   'prefix;
+      substack: 'substack;
+      suffix:   'suffix}
+
   (** jacm-final.pdf p.9 (585) §4.1 media 60 230 368 48 *)
-  type ('color, 'geColor) min = [
-      `LeftMin   of ('color,   'geColor) deque
-    | `RightMin  of ('geColor,   'color) deque
-  ] 
-  type ('color, 'geColor) lastMin = [
-      ('color, 'geColor) min
-    | `LeftOnly  of ('color,      empty) deque
-    | `RightOnly of ( empty,     'color) deque
-  ] 
+  type ('color, 'geColor, 'substack) min = [
+      `LeftMin   of ('color,   'substack, 'geColor) deque
+    | `RightMin  of ('geColor, 'substack,   'color) deque]
+  type ('color, 'geColor, 'substack) lastMin = [
+      ('color, 'geColor, 'substack) min
+    | `LeftOnly  of ('color,   [`Nil],       empty) deque
+    | `RightOnly of ( empty,   [`Nil],      'color) deque]
 
-  (* TODO: use a functor to fill in the <min> part which should be min or lastMin *)
+  type 'a minTail = ('a yellow, 'a geYellow, 'a minTail) min
+  type ('a, 'color, 'geColor) min'     = ('color, 'geColor, 'a minTail) min
+  type ('a, 'color, 'geColor) lastMin' = ('color, 'geColor, 'a minTail) lastMin
+
   (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
-  type 'a greenDeque  = ('a green,  'a geGreen)  min
-  type 'a yellowDeque = ('a yellow, 'a geYellow) min
-  type 'a redDeque    = ('a red,    'a geRed)    min
-
-  type 'a tailSubStack    = [`Cons of 'a   yellowDeque * 'a tailSubStack]
-  type ('hd, 'a) subStack = [`Cons of 'hd              * 'a tailSubStack]
-  type 'a greenSubStack   = ('a  greenDeque, 'a) subStack
+  (* TODO: move the decision just around min and lastMin, and merge min' with lastMin' *)
+  type ('a, 'color, 'geColor, 'b_last) substack = 'result
+  constraint 'b_last = (  'a, 'color,  'geColor) min'
+                       * ('a, 'color,  'geColor) lastMin'
+                       * 'result
+  
+  type ('a, 'b_last) greenSubstack  = ('a, 'a green,  'a geGreen,  'b_last) substack
   (* A yellow substack can only appear as the topmost substack in a stack. *)
-  type 'a yellowSubStack  = ('a yellowDeque, 'a) subStack
-  type 'a redSubStack     = ('a    redDeque, 'a) subStack
+  type ('a, 'b_last) yellowSubstack = ('a, 'a yellow, 'a geYellow, 'b_last) substack
+  type ('a, 'b_last) redSubstack    = ('a, 'a red,    'a geRed,    'b_last) substack
+
+  type 'a gStackLast   = [ `GreenStackLast  of ('a, 't * 'f * 't) greenSubstack  * [`Null]]
+  type 'a yStackLast   = [ `YellowStackLast of ('a, 't * 'f * 't) yellowSubstack * [`Null]]
+  type 'a rStackLast   = [ `RedStackLast    of ('a, 't * 'f * 't) redSubstack    * [`Null]]
+  type ('a, 'b) _gStack  = [ 'a gStackLast
+                           | `GreenStack  of ('a, 't * 'f * 'f)  greenSubstack * 'b]
+  type ('a, 'b) _yStack  = [ 'a yStackLast
+                           | `YellowStack of ('a, 't * 'f * 'f) yellowSubstack * 'b]
+  type ('a, 'b) _rStack  = [ 'a rStackLast
+                           | `RedStack    of ('a, 't * 'f * 'f)    redSubstack * 'b]
+  type ('a, 'b, 'c) _grStack = [('a, 'b) _gStack | ('a, 'c) _rStack]
+
+  type 'a      greenStack = ('a, 'a greenOrRedStack) _gStack
+  and  'a    yellowGStack = ('a, 'a      greenStack) _yStack
+  and  'a   yellowGRStack = ('a, 'a greenOrRedStack) _yStack
+  and  'a        redStack = ('a, 'a        redStack) _rStack
+  and  'a greenOrRedStack = ('a, 'a greenOrRedStack, 'a redStack) _grStack
 
   (* Contrarily to substacks, the tail of a stack may start with different
      colors: green is allways possible, but some stack elements may be
@@ -173,19 +192,6 @@ module DequesColorsStack = struct
      polymorphic constructors in order to make a union of the two cases. In
      practice, these cases are already disjoint types, but performing their
      union is more readily done by defining a variant at this level. *)
-  module ToFixup = struct
-    type 'a gStackTail    = [`GreenStack of 'a greenStack                            | `Null]
-    and  'a gRStackTail   = [`GreenStack of 'a greenStack | `RedStack of 'a redStack | `Null]
-    and  'a greenStack    = 'a greenSubStack  * 'a gRStackTail
-    and  'a yellowGStack  = 'a yellowSubStack * 'a gStackTail
-    and  'a yellowGRStack = 'a yellowSubStack * 'a gRStackTail
-    and  'a redStack      = 'a redSubStack    * 'a gStackTail
-  end
-  open ToFixup
-  type nonrec 'a greenStack    = [`GreenStack  of 'a    greenStack]
-  type nonrec 'a yellowGStack  = [`YellowStack of 'a  yellowGStack]
-  type nonrec 'a yellowGRStack = [`YellowStack of 'a yellowGRStack]
-  type nonrec 'a redStack      = [`RedStack    of 'a      redStack]
 
   (** * jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
   type 'a semiregular = ['a greenStack | 'a yellowGRStack | 'a redStack]
