@@ -6,6 +6,7 @@ addons:
     packages:
       - ocaml
       - ocaml-findlib
+      - caml2html
       - libpodofo-utils
 
 script:

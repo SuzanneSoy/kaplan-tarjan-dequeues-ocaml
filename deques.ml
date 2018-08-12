@@ -193,9 +193,9 @@ module DequesColorsStack = struct
      practice, these cases are already disjoint types, but performing their
      union is more readily done by defining a variant at this level. *)
 
-  (** * jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
+  (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
   type 'a semiregular = ['a greenStack | 'a yellowGRStack | 'a redStack]
-  (** * jacm-final.pdf p.9 (585) §4.1 media 60 338 368 24 *)
+  (** jacm-final.pdf p.9 (585) §4.1 media 60 338 368 24 *)
   type 'a regular     = ['a greenStack | 'a yellowGStack  | 'a redStack]
 end
 open DequesColorsStack
