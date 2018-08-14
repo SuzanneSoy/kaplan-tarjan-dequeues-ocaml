@@ -19,7 +19,7 @@ module Colors = struct
   type 'a red    = [   buffer0 | 'a buffer5]
   (* In addition to the colors defined by Kaplan and Tarjan, we define the
      shorhand "empty" for buffers of size zero (which are used later on). *)
-  type    empty  = [           |    buffer0]
+  type    empty  =     buffer0
 end
 open Colors
 
@@ -40,111 +40,31 @@ module ColorOrder = struct
 end
 open ColorOrder
 
-(** jacm-final.pdf p.9 (585) §4.1 media 60 134 368 36 *)
+(** jacm-final.pdf p.9 (585) §4.1 media 60 146 368 24 *)
 module BufferColors = struct
   type 'a buffer = ['a green | 'a yellow | 'a red]
 end
 open BufferColors
 
-(** jacm-final.pdf p.8 / 584 §4.1 60 408 368 48 *)
+(** jacm-final.pdf p.8 (584) §4.1 media 60 408 368 48 *)
 module Deques = struct
   (* We use polymorphic variants instead of the usual 't option so that it is
      possible later to indicate in which contexts a deque must or must not
      have a non-empty child. *)
-  type 'a deque = {
-    prefix: 'a buffer;
-    child:  [`Child of ('a * 'a) deque | `NoChild];
-    suffix: 'a buffer;
-    }
-  (* We can't easily factor this, as OCaml cannot inline polymorphic variants
-     before they are completely defined. *)
-  type 'a child   = [`Child of ('a * 'a) deque]
-  type    noChild = [`NoChild]
-  let prefix d = d.prefix
-  let child  d = d.child
-  let suffix d = d.suffix
-end
-open Deques
-
-(* If we naively translate Kaplan and Tarjan's constraints into a set of
-   polymorphic variants, we might end up with some variation of the following,
-   which describes the type of a (semi-)regular stack of deques, where the
-   stack's pointers are one of the fields of its elements. This first attempt
-   only implements a single stack of deques, not a stack of substacks (where
-   the elements of the stack are linked by one of two pointers). *)
-module DequesColors = struct
-  type ('prefix, 'child, 'suffix) deque = {
-    prefix: 'prefix;
-    child:  'child;
-    suffix: 'suffix;
-  }
-  (** jacm-final.pdf p.9 (585) §4.1 media 60 230 368 48 *)
-  type ('color, 'geColor, 'child) min = [
-      `LeftMin   of ('color,   [`Child of 'child | `NoChild],          'geColor) deque
-    | `RightMin  of ('geColor, [`Child of 'child | `NoChild],            'color) deque
-    (* When the 'color is red, the two cases below are partially redundant
-       with the ones above. For example, a buffer0,`NoChild,buffer5 dequeue
-       could be labeled as `RightOnly or `LeftMin or `RightMin. This does not
-       affect the safety properties, but it would be nicer if we had an
-       unambiguous labeling. *)
-    | `LeftOnly  of ('color,   [                   `NoChild],             empty) deque
-    | `RightOnly of ( empty,   [                   `NoChild],            'color) deque
-    ] 
-
-  (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
-  (* If we try to inline and merge together polymorphic variants (e.g. ['a
-     greenDeque|'yellowGDeque]) which are defined as mutually-recursive types,
-     OCamle gives the following error: *)
-  (* "Error: The type constructor yellowDeque is not yet completely defined"
-     We therefore first define the types by moving the [`X of …] at the
-     use-site, and stripping it away from the definition site. Then, we wrap
-     the types defined that way in order to put back the [`X of …] around each
-     type. *)
-  (* Since OCaml does not allow types to be shadowed, we define the first
-     unwrapped version of the types in a submodule. Types which are made
-     available in the current scope by using "open" can be shadowed by later
-     uses of "open" and later definitions. *)
-  module ToFixup = struct
-    type 'a greenDeque    = ('a green,  'a geGreen,  [ `Green  of 'a greenDeque
-                                                     | `Yellow of 'a yellowGRDeque
-                                                     | `Red    of 'a redDeque     ]) min
-    and  'a yellowGDeque  = ('a yellow, 'a geYellow, [ `Green  of 'a greenDeque
-                                                     | `Yellow of 'a yellowGDeque ]) min
-    and  'a yellowGRDeque = ('a yellow, 'a geYellow, [ `Green  of 'a greenDeque
-                                                     | `Yellow of 'a yellowGRDeque
-                                                     | `Red    of 'a redDeque     ]) min
-    and  'a redDeque      = ('a red,    'a geRed,    [ `Green  of 'a greenDeque
-                                                     | `Yellow of 'a yellowGDeque ]) min
-  end
-  open ToFixup
-  type nonrec 'a greenDeque    = [`Green  of 'a    greenDeque]
-  type nonrec 'a yellowGDeque  = [`Yellow of 'a  yellowGDeque]
-  type nonrec 'a yellowGRDeque = [`Yellow of 'a yellowGRDeque]
-  type nonrec 'a redDeque      = [`Red    of 'a      redDeque]
-
-  (** * jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
-  type 'a semiregular = ['a greenDeque | 'a yellowGRDeque | 'a redDeque]
-  (** * jacm-final.pdf p.9 (585) §4.1 media 60 338 368 24 *)
-  type 'a regular     = ['a greenDeque | 'a yellowGDeque  | 'a redDeque]
-end
-open DequesColors
-
-(* As we can see, the above translation defines the semiregular and regular
-   types as a variant of variants, with 10 cases in total in the
-   definition. Substacks will introduce a number of corner cases, and the
-   above definition could become a long list of those. *)
-(* Instead, we choose to separate the concerns related to pairs of buffers,
-   substacks and stacks. Each level of the construction has its own corner
-   cases, which will be to some extent kept separate. We first start by
-   updating the definition of deques so that the stack becomes a separate,
-   apparent structure. *)
-module DequesColorsStack = struct
   type ('prefix, 'substack, 'suffix) deque = {
       prefix:   'prefix;
       substack: 'substack;
       suffix:   'suffix}
+  type 'a child = 'a * 'a
+end
+open Deques
+
+module DequesColorsStack = struct
 
   (** jacm-final.pdf p.9 (585) §4.1 media 60 230 368 48 *)
+  (* TODO: this is ambiguous: when the colors are the same, or for the empty
+     cases, several constructors could be used for the same pair of
+     buffers. *)
   type ('color, 'geColor, 'substack) min = [
       `LeftMin   of ('color,   'substack, 'geColor) deque
     | `RightMin  of ('geColor, 'substack,   'color) deque]
@@ -153,12 +73,12 @@ module DequesColorsStack = struct
     | `LeftOnly  of ('color,   [`Nil],       empty) deque
     | `RightOnly of ( empty,   [`Nil],      'color) deque]
 
-  type 'a minTail = ('a yellow, 'a geYellow, 'a minTail) min
-  type ('a, 'color, 'geColor) min'     = ('color, 'geColor, 'a minTail) min
-  type ('a, 'color, 'geColor) lastMin' = ('color, 'geColor, 'a minTail) lastMin
+  type 'a minTail     = Deque1 of ('a yellow, 'a geYellow, 'a child minTail) min
+  type 'a lastMinTail = Deque2 of ('a yellow, 'a geYellow, 'a child lastMinTail) lastMin
+  type ('a, 'color, 'geColor) min'     = ('color, 'geColor, 'a child minTail) min
+  type ('a, 'color, 'geColor) lastMin' = ('color, 'geColor, 'a child lastMinTail) lastMin
 
   (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
-  (* TODO: move the decision just around min and lastMin, and merge min' with lastMin' *)
   type ('a, 'color, 'geColor, 'b_last) substack = 'result
   constraint 'b_last = (  'a, 'color,  'geColor) min'
                        * ('a, 'color,  'geColor) lastMin'
@@ -169,6 +89,9 @@ module DequesColorsStack = struct
   type ('a, 'b_last) yellowSubstack = ('a, 'a yellow, 'a geYellow, 'b_last) substack
   type ('a, 'b_last) redSubstack    = ('a, 'a red,    'a geRed,    'b_last) substack
 
+  (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
+  (* In order to simplify the description of the types, we have separated the
+     outer stack from the substacks. *)
   type 'a gStackLast   = [ `GreenStackLast  of ('a, 't * 'f * 't) greenSubstack  * [`Null]]
   type 'a yStackLast   = [ `YellowStackLast of ('a, 't * 'f * 't) yellowSubstack * [`Null]]
   type 'a rStackLast   = [ `RedStackLast    of ('a, 't * 'f * 't) redSubstack    * [`Null]]
@@ -193,7 +116,6 @@ module DequesColorsStack = struct
      practice, these cases are already disjoint types, but performing their
      union is more readily done by defining a variant at this level. *)
 
-  (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
   type 'a semiregular = ['a greenStack | 'a yellowGRStack | 'a redStack]
   (** jacm-final.pdf p.9 (585) §4.1 media 60 338 368 24 *)
   type 'a regular     = ['a greenStack | 'a yellowGStack  | 'a redStack]
