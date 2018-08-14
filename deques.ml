@@ -65,42 +65,47 @@ module DequesColorsStack = struct
   (* TODO: this is ambiguous: when the colors are the same, or for the empty
      cases, several constructors could be used for the same pair of
      buffers. *)
-  type ('color, 'geColor, 'substack) min = [
-      `LeftMin   of ('color,   'substack, 'geColor) deque
-    | `RightMin  of ('geColor, 'substack,   'color) deque]
-  type ('color, 'geColor, 'substack) lastMin = [
-      ('color, 'geColor, 'substack) min
-    | `LeftOnly  of ('color,   [`Nil],       empty) deque
-    | `RightOnly of ( empty,   [`Nil],      'color) deque]
+  type ('color, 'geColor, 'substack, 'b_last) min = 'result
+  constraint 'b_last = ([ `LeftMin   of ('color,   'substack, 'geColor) deque
+                        | `RightMin  of ('geColor, 'substack,   'color) deque]
+                       *[ `LeftMin   of ('color,   'substack, 'geColor) deque
+                        | `RightMin  of ('geColor, 'substack,   'color) deque
+                        | `LeftOnly  of ('color,   [`Nil],       empty) deque
+                        | `RightOnly of ( empty,   [`Nil],      'color) deque]
+                       *'result)
+  (* type ('color, 'geColor, 'substack) lastMin = [
+   *     ('color, 'geColor, 'substack) min
+   *   | `LeftOnly  of ('color,   [`Nil],       empty) deque
+   *   | `RightOnly of ( empty,   [`Nil],      'color) deque] *)
 
-  type 'a minTail     = Deque1 of ('a yellow, 'a geYellow, 'a child minTail) min
-  type 'a lastMinTail = Deque2 of ('a yellow, 'a geYellow, 'a child lastMinTail) lastMin
-  type ('a, 'color, 'geColor) min'     = ('color, 'geColor, 'a child minTail) min
-  type ('a, 'color, 'geColor) lastMin' = ('color, 'geColor, 'a child lastMinTail) lastMin
+  type ('a, 'b_last) minTail     = Deque of ('a yellow, 'a geYellow, ('a child, 'b_last1) minTail, 'b_last2) min
+  constraint 'b_last = (('t1 * 'f1 * 't1) * ('t1 * 'f1 * 't1))
+                       *(('t1 * 'f1 * 'f1) * ('t1 * 'f1 * 'f1))
+                       *('b_last1 * 'b_last2)
+  (* type 'a lastMinTail = Deque of ('a yellow, 'a geYellow, 'a child lastMinTail) lastMin *)
+  type ('a, 'color, 'geColor, 'b_last1, 'b_last2) min'     = ('color, 'geColor, ('a child, 'b_last1) minTail, 'b_last2) min
+  (* type ('a, 'color, 'geColor) lastMin' = ('color, 'geColor, 'a child lastMinTail) lastMin *)
 
   (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
-  type ('a, 'color, 'geColor, 'b_last) substack = 'result
-  constraint 'b_last = (  'a, 'color,  'geColor) min'
-                       * ('a, 'color,  'geColor) lastMin'
-                       * 'result
+  type ('a, 'color, 'geColor, 'b_last1, 'b_last2) substack = ('a, 'color,  'geColor, 'b_last1, 'b_last2) min'
   
-  type ('a, 'b_last) greenSubstack  = ('a, 'a green,  'a geGreen,  'b_last) substack
+  type ('a, 'b_last1, 'b_last2) greenSubstack  = ('a, 'a green,  'a geGreen,  'b_last1, 'b_last2) substack
   (* A yellow substack can only appear as the topmost substack in a stack. *)
-  type ('a, 'b_last) yellowSubstack = ('a, 'a yellow, 'a geYellow, 'b_last) substack
-  type ('a, 'b_last) redSubstack    = ('a, 'a red,    'a geRed,    'b_last) substack
+  type ('a, 'b_last1, 'b_last2) yellowSubstack = ('a, 'a yellow, 'a geYellow, 'b_last1, 'b_last2) substack
+  type ('a, 'b_last1, 'b_last2) redSubstack    = ('a, 'a red,    'a geRed,    'b_last1, 'b_last2) substack
 
   (** jacm-final.pdf p.9 (585) §4.1 media 60 290 368 60 *)
   (* In order to simplify the description of the types, we have separated the
      outer stack from the substacks. *)
-  type 'a gStackLast   = [ `GreenStackLast  of ('a, 't * 'f * 't) greenSubstack  * [`Null]]
-  type 'a yStackLast   = [ `YellowStackLast of ('a, 't * 'f * 't) yellowSubstack * [`Null]]
-  type 'a rStackLast   = [ `RedStackLast    of ('a, 't * 'f * 't) redSubstack    * [`Null]]
+  type 'a gStackLast   = [ `GreenStackLast  of ('a, 't1 * 'f1 * 't1, 't2 * 'f2 * 't2) greenSubstack  * [`Null]]
+  type 'a yStackLast   = [ `YellowStackLast of ('a, 't1 * 'f1 * 't1, 't2 * 'f2 * 't2) yellowSubstack * [`Null]]
+  type 'a rStackLast   = [ `RedStackLast    of ('a, 't1 * 'f1 * 't1, 't2 * 'f2 * 't2) redSubstack    * [`Null]]
   type ('a, 'b) _gStack  = [ 'a gStackLast
-                           | `GreenStack  of ('a, 't * 'f * 'f)  greenSubstack * 'b]
+                           | `GreenStack  of ('a, 't1 * 'f1 * 'f1, 't2 * 'f2 * 'f2)  greenSubstack * 'b]
   type ('a, 'b) _yStack  = [ 'a yStackLast
-                           | `YellowStack of ('a, 't * 'f * 'f) yellowSubstack * 'b]
+                           | `YellowStack of ('a, 't1 * 'f1 * 'f1, 't2 * 'f2 * 'f2) yellowSubstack * 'b]
   type ('a, 'b) _rStack  = [ 'a rStackLast
-                           | `RedStack    of ('a, 't * 'f * 'f)    redSubstack * 'b]
+                           | `RedStack    of ('a, 't1 * 'f1 * 'f1, 't2 * 'f2 * 'f2)    redSubstack * 'b]
   type ('a, 'b, 'c) _grStack = [('a, 'b) _gStack | ('a, 'c) _rStack]
 
   type 'a      greenStack = ('a, 'a greenOrRedStack) _gStack
